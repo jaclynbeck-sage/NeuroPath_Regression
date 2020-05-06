@@ -226,7 +226,7 @@ all.annotations = list(
 # Store results
 write.csv(Master, file = '~/NeuroPath_Regression/Neuropathology_Scores.csv',  row.names =F)
 
-ENRICH_OBJ <-  syn_temp$store( synapseclient$File( path='Neuropathology_Scores.csv', name = 'ROSMAP DLPFC NeuroPath Regression Results', parentId=CODE$properties$id ), activityName = activityName, executed = c( Syns_Used, thisFile) , activityDescription = activityDescription)
+ENRICH_OBJ <-  syn_temp$store( synapseclient$File( path='~/NeuroPath_Regression/Neuropathology_Scores.csv', name = 'ROSMAP DLPFC NeuroPath Regression Results', parentId=CODE$properties$id ), activityName = activityName, executed = c( Syns_Used, thisFile) , activityDescription = activityDescription)
   all.annotations$tissueTypeAbrv = 'DLPFC'
   syn_temp$setAnnotations(ENRICH_OBJ, annotations = all.annotations)
 
@@ -242,6 +242,7 @@ syn_temp <- synapseclient$Synapse()
 syn_temp$login()
 
 setwd("~/NeuroPath_Regression/")
+
 source("~/NeuroPath_Regression/utilityFunctions/knitfile2synapseClient.R")
 source("~/NeuroPath_Regression/utilityFunctions/hook_synapseMdSyntax_plot.R")
 createAndKnitToFolderEntityClient(file = "code/Neuropath_Scores.Rmd",
