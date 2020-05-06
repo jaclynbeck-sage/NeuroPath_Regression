@@ -15,7 +15,6 @@ require(Hmisc)
 require(reshape2)
 library(plyr)
 library(tidyverse)
-#library(synapser)
 library(githubr) # get the package from devtools::install_github('brian-bot/githubr')
 library(doParallel)
 library(foreach)
@@ -41,14 +40,14 @@ knitr::opts_chunk$set(
 ############################################################################################################
 #Neuropath Scores
 #SVA adjusted (Not Diagnosis Adjusted)
-EXP <- read.table( synapser::synGet('syn21292032')$path, row.names=1, header=T, sep='\t' )
+EXP <- read.table( syn_temp$get('syn21292032')$path, row.names=1, header=T, sep='\t' )
 #Remove Leading X from column names
 colnames(EXP) <- gsub( "X", "", colnames(EXP) )
 
-Meta <- read.csv( synapser::synGet('syn3191087')$path, header=T, stringsAsFactors = F)
-Meta2 <- read.csv( synapser::synGet('syn21323366')$path, header=T, stringsAsFactors = F )
+Meta <- read.csv( syn_temp$get('syn3191087')$path, header=T, stringsAsFactors = F)
+Meta2 <- read.csv( syn_temp$get('syn21323366')$path, header=T, stringsAsFactors = F )
 
-ID_Key <- read.csv( synapser::synGet('syn3382527')$path )
+ID_Key <- read.csv( syn_temp$get('syn3382527')$path )
 ID_Key <- ID_Key[ ID_Key$rnaseq_data ==1, ]
 
 #Filter for retained RNA-Seq IDs
