@@ -34,7 +34,7 @@ knitr::opts_chunk$set(
 ```
 
 #### Pull Data
-```{r PullData, eval=FALSE, cache=FALSE, include=TRUE }
+```{r PullData, eval=TRUE, message=TRUE, include=TRUE }
 ############################################################################################################
 #Neuropath Scores
 #SVA adjusted (Not Diagnosis Adjusted)
@@ -77,7 +77,7 @@ table( row.names(PartialMeta) == row.names(EXP) )
 ```
 
 #### Setup and Run Models
-```{r SetAnaylsisParameters, eval=FALSE, cache=FALSE, include=TRUE }
+```{r SetAnaylsisParameters, eval=TRUE, message=TRUE, include=TRUE }
 NeuroPath_Calc <- function( GN,Path,Exp ){
   #'@GN a character ENSG Gene name eg 'ENSG00000227232'
   #'@Path the character string of Neuropath column to use for model eg. EITHER: 'ceradsc', 'braaksc', 'cogdx', 'dcfdx_lv'
@@ -110,7 +110,7 @@ NeuroPath_Calc <- function( GN,Path,Exp ){
 
 ```
 
-```{r Runanalyses, eval=FALSE, cache=FALSE, include=TRUE}
+```{r Runanalyses, eval=TRUE, message=TRUE, include=TRUE}
 #assign gne names to a variable to iterate over
 temp<-colnames(EXP)
 
