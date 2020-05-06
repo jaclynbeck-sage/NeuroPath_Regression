@@ -237,7 +237,7 @@ synapseclient <- reticulate::import("synapseclient")
 syn_temp <- synapseclient$Synapse()
 syn_temp$login()
 
-setwd("~/NeuroPath_Regression/code/")
+setwd("~/NeuroPath_Regression/")
 source("~/NeuroPath_Regression/utilityFunctions/knitfile2synapseClient.R")
 source("~/NeuroPath_Regression/utilityFunctions/hook_synapseMdSyntax_plot.R")
 createAndKnitToFolderEntityClient(file = "NeuroPath_Regression.Rmd",
