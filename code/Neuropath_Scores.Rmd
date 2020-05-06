@@ -22,6 +22,8 @@ cl = makeCluster(detectCores()-2)
 registerDoParallel(cl)
 options(xtable.type="html")
 
+setwd("~/NeuroPath_Regression/")
+
 knitr::opts_chunk$set(
   echo=FALSE,
   warning=FALSE,
@@ -185,10 +187,11 @@ table(Master[ Master$PVal_Adj < 0.05, ]$OddsRatio > 1, Master[ Master$PVal_Adj <
 ```
 
 ```{r synapse.parameters, include=FALSE, cache=TRUE}
+setwd("~/NeuroPath_Regression/")
 parentId = 'syn7525089';
 activityName = 'ROSMAP DLPFC NeuroPath Regression Results';
 activityDescription = 'Logistic Ordinal Regression of ROSMAP Gene Expression to Neuro Pathology scores (Braak, CERAD, CogDx, and DcfDx) ';
-thisFileName <- 'NeuroPath_Regression.Rmd'
+thisFileName <- 'Neuropath_Scores.Rmd'
 # Github link
 thisRepo <- githubr::getRepo(repository = "jgockley62/NeuroPath_Regression", ref="branch", refName='master')
 thisFile <- githubr::getPermlink(repository = thisRepo, repositoryPath=paste0('code/',thisFileName))
@@ -196,6 +199,7 @@ thisFile <- githubr::getPermlink(repository = thisRepo, repositoryPath=paste0('c
 
 ### Store files in synapse
 ```{r synapse.store, include=FALSE, eval=TRUE, cache=FALSE}
+setwd("~/NeuroPath_Regression/")
 activityName = 'ROSMAP DLPFC NeuroPath Regression Results';
 activityDescription = 'Logistic Ordinal Regression of ROSMAP Gene Expression to Neuro Pathology scores (Braak, CERAD, CogDx, and DcfDx) ';
 CODE <- syn_temp$store(synapseclient$Folder(name = "correlations_gene_neuropath", parentId = parentId))
@@ -240,7 +244,7 @@ syn_temp$login()
 setwd("~/NeuroPath_Regression/")
 source("~/NeuroPath_Regression/utilityFunctions/knitfile2synapseClient.R")
 source("~/NeuroPath_Regression/utilityFunctions/hook_synapseMdSyntax_plot.R")
-createAndKnitToFolderEntityClient(file = "NeuroPath_Regression.Rmd",
+createAndKnitToFolderEntityClient(file = "code/Neuropath_Scores.Rmd",
                                           parentId ="syn7525089",
                                           folderName = 'correlations_gene_neuropath')
 ```
