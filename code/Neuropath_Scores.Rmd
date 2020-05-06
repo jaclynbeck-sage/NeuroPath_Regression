@@ -173,6 +173,9 @@ table(Master[ Master$PVal_Adj < 0.05, ]$OddsRatio > 1 )['TRUE'] ))
 print( 'Significantly associated genes by Neuropath Score with an Odds Ratio > 1 by Score Type: ')
 table(Master[ Master$PVal_Adj < 0.05, ]$OddsRatio > 1, Master[ Master$PVal_Adj < 0.05, ]$NeuroPath_Type ) 
 
+# Store results
+write.csv(Master, file = '~/NeuroPath_Regression/Neuropathology_Scores.csv',  row.names =F)
+
 ```
 
 ```{r synapse.parameters, include=FALSE, cache=TRUE}
@@ -211,9 +214,6 @@ all.annotations = list(
   rnaquantification = 'RSEM',
   genomeAssemblyID = 'GRCh38'
 )
-
-# Store results
-write.csv(Master, file = '~/NeuroPath_Regression/Neuropathology_Scores.csv',  row.names =F)
 
 ENRICH_OBJ <-  syn_temp$store( synapseclient$File( path='~/NeuroPath_Regression/Neuropathology_Scores.csv', name = 'ROSMAP DLPFC NeuroPath Regression Results', parentId=CODE$properties$id ), activityName = activityName, executed = c( Syns_Used, thisFile) , activityDescription = activityDescription)
   all.annotations$tissueTypeAbrv = 'DLPFC'
