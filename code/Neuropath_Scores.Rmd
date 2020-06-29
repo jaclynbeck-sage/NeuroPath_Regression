@@ -174,8 +174,37 @@ print( 'Significantly associated genes by Neuropath Score with an Odds Ratio > 1
 table(Master[ Master$PVal_Adj < 0.05, ]$OddsRatio > 1, Master[ Master$PVal_Adj < 0.05, ]$NeuroPath_Type ) 
 
 # Store results
-write.csv(Master, file = '~/NeuroPath_Regression/Neuropathology_Scores.csv',  row.names =F)
+#write.csv(Master, file = '~/NeuroPath_Regression/Neuropathology_Scores.csv',  row.names =F)
 
+```
+
+```{r GNAME}
+library(biomaRt)
+org = 'hsa'
+id.type = 'ensembl_gene_id'
+host = 'jul2019.archive.ensembl.org'
+  
+message("Connecting to BioMart ...")
+ensembl <- useMart("ENSEMBL_MART_ENSEMBL", host = host)
+ds <- listDatasets(ensembl)[, "dataset"]
+ds <- grep(paste0("^", org), ds, value = TRUE)
+ensembl <- useDataset(ds, mart = ensembl)
+
+Genes <- getBM(filters = id.type, attributes = c(id.type, 'hgnc_symbol', 'chromosome_name', 'start_position', 'end_position'), values = Master$ENSG , mart = ensembl)
+
+Genes[ Genes$hgnc_symbol == '',]$hgnc_symbol <- "NA"
+Genes <- Genes[ !duplicated(Genes$ensembl_gene_id), ]
+row.names(Genes) <- Genes$ensembl_gene_id
+
+Master$GName <- Genes[Master$ENSG,]$hgnc_symbol
+
+Master <- Master[ , c('ENSG', 'GName', 'OddsRatio', 'CI_Lower','CI_Upper', 
+                      'PVal', 'PVal_Adj', 'NeuroPath_Type', 'GName')
+                ]
+Master <- Master[ , (colnames(Master) %in% 'GName.1')==F]
+
+# Store results
+write.csv(Master, file = '~/NeuroPath_Regression/Neuropathology_Scores.csv',  row.names =F)
 ```
 
 ```{r synapse.parameters, include=FALSE, cache=TRUE}
