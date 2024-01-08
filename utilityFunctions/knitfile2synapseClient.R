@@ -14,7 +14,7 @@ knitfile2synapseClient <- function(file, owner, parentWikiId=NULL, wikiName=NULL
   ## CHECK TO MAKE SURE FILE EXISTS
   file <- path.expand(file)
   if( !file.exists(file) ){
-    stop(sprintf("file %s does not exist at this location:\n", basename(f), f))
+    stop(str_glue("file {basename(file)} does not exist at this location: {file}"))
   }
   
   ## IF NO WIKI NAME GIVEN, DEFAULT TO FILE NAME WITHOUT EXTENSION
@@ -25,7 +25,7 @@ knitfile2synapseClient <- function(file, owner, parentWikiId=NULL, wikiName=NULL
   
   ## IF OWNER IS CHARACTER, TRY TO GET FROM SYNAPSE
   if( is.character(owner) & length(owner) == 1 ){
-    owner <- syn_temp$get(owner, downloadFile=FALSE)
+    owner <- synGet(owner, downloadFile = FALSE)
   }
   
   #####
@@ -42,8 +42,8 @@ knitfile2synapseClient <- function(file, owner, parentWikiId=NULL, wikiName=NULL
   
   ## Create temporary output directory for Markdown and plots
   ## If a cache directory exists, then do not create a new one
-  knitDir <- paste(tools::file_path_sans_ext(file),'cache',sep='_')
-  if (!file.exists(paste(tools::file_path_sans_ext(file),'cache',sep='_')))
+  knitDir <- paste(tools::file_path_sans_ext(file), 'cache', sep = '_')
+  if (!file.exists(knitDir))
     dir.create(knitDir)
   
   ## Create plots directory
@@ -63,44 +63,22 @@ knitfile2synapseClient <- function(file, owner, parentWikiId=NULL, wikiName=NULL
   } else if (file.exists(mdName)) { # if knitmd is false check already markdown exists
     mdFile <- mdName
   } else {
-    stop(sprintf("markdown file %s does not exist at this location: %s", basename(mdName), mdName))
+    stop(str_glue("markdown file {basename(mdName)} does not exist at this location: {mdName}"))
   }
   att <- as.list(list.files(knitPlotDir, full.names=TRUE))
   
   # New wiki page
-  
-  # A quick fix for SYNR-1270/SYNPY-689
-  # https://sagebionetworks.jira.com/browse/SYNPY-689
-  # R-to-Python conversion of an empty list isn't working properly
-  # in the case that there are no attachments
-  if(length(att) == 0) {
-    
-    newWiki <- synapseclient$Wiki(
-                              owner=owner,
-                              title=wikiName,
-                              markdownFile=mdFile
-                            )
-  }
-  else {
-    
-    #synapser::Wiki -> synapse$Wiki
-    newWiki <- synapseclient$Wiki(
-                              owner=owner,
-                              title=wikiName,
-                              markdownFile=mdFile,
-                              attachments=att
-                            )
-  }
+  newWiki <- Wiki(owner=owner, title=wikiName, markdownFile=mdFile, attachments=att)
 
   ## Create/retrieve and store Wiki markdown to Synapse
-  w <- try(syn_temp$getWiki(owner),silent=T)
+  w <- try(synGetWiki(owner))
   
   ## create new wiki if doesn't exist
   if (class(w)[1] == 'try-error') {
     w <- newWiki
     # delete existing wiki along with history
   } else if (overwrite && is.na(parentWikiId)) {
-    w <- syn$delete(w)
+    w <- synDelete(w)
     w <- newWiki
     # update existing wiki
   } else {
@@ -108,7 +86,7 @@ knitfile2synapseClient <- function(file, owner, parentWikiId=NULL, wikiName=NULL
   }
   
   ## Store to Synapse 
-  w <- syn_temp$store(w)
+  w <- synStore(w)
   
   # Undo changes to options
   knitr::opts_chunk$restore(old_knitr_opts)
@@ -132,11 +110,8 @@ knitfile2synapseClient <- function(file, owner, parentWikiId=NULL, wikiName=NULL
 #' @return a synapseClient::WikiPage object
 createAndKnitToFileEntityClient <- function(file, parentId, fileName=NULL, wikiName=NULL, overwrite=FALSE, knitmd=TRUE, ...) {
   
-  entity <- syn_temp$store(
-    synapseclient$File(
-      name = folderName,
-      parentId = parentId
-    )
+  entity <- synStore(
+    File(name = fileName, parent = parentId)
   )
 
   knitfile2synapseClient(file=file, owner=entity, wikiName=wikiName,
@@ -157,14 +132,11 @@ createAndKnitToFileEntityClient <- function(file, parentId, fileName=NULL, wikiN
 #' @return a synapseClient::WikiPage entity object
 createAndKnitToFolderEntityClient <- function(file, parentId, folderName,
                                         wikiName=NULL, overwrite=FALSE, knitmd=TRUE, ...) {
-  entity <- syn_temp$store(
-    synapseclient$Folder(
-      name = folderName,
-      parentId = parentId
-    )
+  entity <- synStore(
+    Folder(name = folderName, parent = parentId)
   )
   knitfile2synapseClient(file=file, owner=entity, wikiName=wikiName, 
-                   overwrite=overwrite, knitmd=knitmd)
+                         overwrite=overwrite, knitmd=knitmd)
 }
 
 

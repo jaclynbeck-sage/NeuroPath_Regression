@@ -2,10 +2,10 @@
 title: Logistic Ordinal Regression of ROSMAP DLPFC Expression to NeuroPath Scores
 output: html_notebook
 ---
-Date of analysis update: "`r date()`"
+Date of analysis update: `r date()`
 
 ```{r libs, echo=FALSE, warning=FALSE, message=FALSE, include=FALSE, cache=FALSE}
-##It is assumed your working directory is "~/ampad-DiffExp/gene_level_analysis"
+## Assumes the path to the NeuroPath_Regression folder is ~/Neuropath_Regression
 ## Load required libraries
 library(data.table)
 require(foreign)
@@ -18,11 +18,17 @@ library(tidyverse)
 library(githubr) # get the package from devtools::install_github('brian-bot/githubr')
 library(doParallel)
 library(foreach)
-cl = makeCluster(detectCores()-2)
+library(synapser)
+
+cl = makeCluster(detectCores()-1)
 registerDoParallel(cl)
 options(xtable.type="html")
 
-setwd("~/NeuroPath_Regression/")
+dir_wd <- file.path("~", "NeuroPath_Regression")
+dir_input <- file.path(dir_wd, "input_data")
+if (!dir.exists(dir_input)) {
+  dir.create(dir_input)
+}
 
 knitr::opts_chunk$set(
   echo=FALSE,
@@ -35,17 +41,22 @@ knitr::opts_chunk$set(
 
 #### Pull Data
 ```{r PullData, eval=TRUE, message=TRUE, echo=TRUE, include=TRUE }
-############################################################################################################
+synLogin()
+
 #Neuropath Scores
 #SVA adjusted (Not Diagnosis Adjusted)
-EXP <- read.table( syn_temp$get('syn21292032')$path, row.names=1, header=T, sep='\t' )
+EXP <- read.table( synGet('syn21292032', downloadLocation=dir_input)$path, 
+                   row.names=1, header=T, sep='\t' )
+
 #Remove Leading X from column names
 colnames(EXP) <- gsub( "X", "", colnames(EXP) )
 
-Meta <- read.csv( syn_temp$get('syn3191087')$path, header=T, stringsAsFactors = F)
-Meta2 <- read.csv( syn_temp$get('syn21323366')$path, header=T, stringsAsFactors = F )
+Meta <- read.csv( synGet('syn3191087', downloadLocation=dir_input)$path, 
+                  header=T, stringsAsFactors = F)
+Meta2 <- read.csv( synGet('syn21323366', downloadLocation=dir_input)$path, 
+                   header=T, stringsAsFactors = F )
 
-ID_Key <- read.csv( syn_temp$get('syn3382527')$path )
+ID_Key <- read.csv( synGet('syn3382527', downloadLocation=dir_input)$path )
 ID_Key <- ID_Key[ ID_Key$rnaseq_data ==1, ]
 
 #Filter for retained RNA-Seq IDs
@@ -56,7 +67,8 @@ row.names(ID_Key) <- ID_Key$projid
 row.names(Meta) <- Meta$individualID
 FullMeta <- cbind( Meta2, Meta[Meta2$individualID,] )
 FullMeta <- FullMeta[ FullMeta$tissue == 'dorsolateral prefrontal cortex', ]
-FullMeta <- FullMeta[ FullMeta$notes == 'geneExpression (rnaSeq)', ]
+#FullMeta <- FullMeta[ FullMeta$notes == 'geneExpression (rnaSeq)', ]
+FullMeta <- FullMeta[ FullMeta$assay == 'rnaSeq', ]
 
 FullMeta <- FullMeta[ FullMeta$projid %in% ID_Key$projid, ]
 FullMeta <- FullMeta[ !duplicated(FullMeta$individualID), ]
@@ -78,64 +90,74 @@ table( row.names(PartialMeta) == row.names(EXP) )
 
 #### Setup and Run Models
 ```{r SetAnaylsisParameters, eval=TRUE, message=TRUE, echo=TRUE, include=TRUE }
-NeuroPath_Calc <- function( GN,Path,Exp ){
+NeuroPath_Calc <- function( GN, Path, Exp ){
   #'@GN a character ENSG Gene name eg 'ENSG00000227232'
   #'@Path the character string of Neuropath column to use for model eg. EITHER: 'ceradsc', 'braaksc', 'cogdx', 'dcfdx_lv'
-  
-  Dat <- as.data.frame( cbind( PartialMeta, Gene = scale( as.numeric(Exp[,GN]) ) ), stringsAsFactors = F )
+  #'@Exp a samples x genes matrix of expression
+  #print(GN)
+  Dat <- as.data.frame( cbind( PartialMeta, Gene = scale( as.numeric(Exp[,GN]) ) ), 
+                        stringsAsFactors = F )
   Dat$ceradsc <- as.factor(Dat$ceradsc)
   Dat$braaksc <- as.factor(Dat$braaksc)
   Dat$cogdx <- as.factor(Dat$cogdx)
   Dat$dcfdx_lv <- as.factor(Dat$dcfdx_lv)
   
-  m <- eval(parse(text=paste0( 'polr(', Path, '~ Gene, data = Dat, Hess=TRUE)' )))
+  formula <- as.formula(paste(Path, "Gene", sep = "~"))
+  m <- polr(formula, data = Dat, Hess = TRUE)
+
   ctable <- coef(summary(m))
   
-  p <- pnorm(abs(ctable[, "t value"]), lower.tail = FALSE) * 2
-  ctable <- cbind(ctable, "p value" = p)
-  #ERROR is HERE:
-  ci <- confint(m)
+  PVal <- pnorm(abs(ctable["Gene", "t value"]), lower.tail = FALSE) * 2
   
   names( GN ) <- 'Gene'
-  PVal <- p['Gene']
   names( PVal ) <- 'PVal'
   OR <- exp(coef(m))
   names( OR ) <- 'OR'
-  CI <- exp(cbind(OR = coef(m), ci))[,2]
+  CI <- exp(confint(m))
+  
+  # TODO change to this
+  #library(psych)
+  #tmp6 = corr.test(x = Exp[,1:100], y = PartialMeta$braaksc, method = "spearman", adjust="fdr")
   
   return( c( GN, OR, CI, PVal ) )
-  
 }
-
-
 ```
 
 ```{r Runanalyses, eval=TRUE, message=TRUE, echo=TRUE, include=TRUE}
-#assign gne names to a variable to iterate over
-temp<-colnames(EXP)
-
 #Process Braak Scores - 113 failed
 mark<-Sys.time()
 Path <- 'braaksc'
-BRAAK <- foreach( i=1:length(colnames(EXP)), .export=c( 'Path', 'EXP', 'temp'), .packages = c('foreign', 'MASS', 'Hmisc'), .combine = 'rbind' ) %dopar% NeuroPath_Calc( GN=temp[i],Path=Path, Exp=EXP )
+BRAAK <- foreach( i=colnames(EXP), .export=c( 'Path', 'EXP', 'temp'), 
+                  .packages = c('foreign', 'MASS', 'Hmisc'), .combine = 'rbind' ) %dopar% {
+                    NeuroPath_Calc( GN=i, Path=Path, Exp=EXP )
+} 
 Sys.time() - mark
 
 #Process CERAD Scores - 17350 failed
 mark<-Sys.time()
 Path <- 'ceradsc'
-CERAD <- foreach( i=1:length(colnames(EXP)), .export=c( 'Path', 'EXP', 'temp'), .packages = c('foreign', 'MASS', 'Hmisc'), .combine = 'rbind' ) %dopar% NeuroPath_Calc( GN=temp[i],Path=Path, Exp=EXP )
+CERAD <- foreach( i=1:length(colnames(EXP)), .export=c( 'Path', 'EXP', 'temp'), 
+                  .packages = c('foreign', 'MASS', 'Hmisc'), .combine = 'rbind' ) %dopar% {
+                    NeuroPath_Calc( GN=temp[i], Path=Path, Exp=EXP )
+}
 Sys.time() - mark
 
 #Process CogDX Scores - 1985 failed
 mark<-Sys.time()
 Path <- 'cogdx'
-cogdx <- foreach( i=1:length(colnames(EXP)), .export=c( 'Path', 'EXP', 'temp'), .packages = c('foreign', 'MASS', 'Hmisc'), .combine = 'rbind' ) %dopar% NeuroPath_Calc( GN=temp[i],Path=Path, Exp=EXP )
+cogdx <- foreach( i=1:length(colnames(EXP)), .export=c( 'Path', 'EXP', 'temp'), 
+                  .packages = c('foreign', 'MASS', 'Hmisc'), .combine = 'rbind' ) %dopar% {
+                    NeuroPath_Calc( GN=temp[i], Path=Path, Exp=EXP )
+}
 Sys.time() - mark
 
 #Process DCFDX Level Scores - 1985 failed
 mark<-Sys.time()
 Path <- 'dcfdx_lv'
-dcfdx <- foreach( i=1:length(colnames(EXP)), .export=c( 'Path', 'EXP', 'temp'), .packages = c('foreign', 'MASS', 'Hmisc'), .combine = 'rbind' ) %dopar% NeuroPath_Calc( GN=temp[i],Path=Path, Exp=EXP ) 
+dcfdx <- foreach( i=1:length(colnames(EXP)), .export=c( 'Path', 'EXP', 'temp'), 
+                  .packages = c('foreign', 'MASS', 'Hmisc'), .combine = 'rbind' ) %dopar% {
+                    NeuroPath_Calc( GN=temp[i], Path=Path, Exp=EXP )
+}
 Sys.time() - mark
 
 Cleaner <- function( DF, type ){
@@ -156,7 +178,8 @@ cogdx <- Cleaner( cogdx, 'COGDX' )
 
 Master <- as.data.frame( rbind( BRAAK,CERAD,dcfdx,cogdx ), stringsAsFactors=F )
 Master <- Master[, c( 'Gene', 'OR', '2.5 %', '97.5 %', 'PVal', 'PVal_Adj', 'NeuroPath' ) ] 
-colnames(Master) <- c( 'ENSG', 'OddsRatio', 'CI_Lower', 'CI_Upper', 'PVal', 'PVal_Adj', 'NeuroPath_Type' ) 
+colnames(Master) <- c( 'ENSG', 'OddsRatio', 'CI_Lower', 'CI_Upper', 'PVal', 
+                       'PVal_Adj', 'NeuroPath_Type' ) 
 
 print( paste0( 'Significantly associated genes by Neuropath Score: ' ))
 table(Master[ Master$PVal_Adj < 0.05, ]$NeuroPath_Type) 
@@ -171,59 +194,56 @@ print( paste0( 'Significantly associated genes by Neuropath Score with an Odds R
 table(Master[ Master$PVal_Adj < 0.05, ]$OddsRatio > 1 )['TRUE'] ))
 
 print( 'Significantly associated genes by Neuropath Score with an Odds Ratio > 1 by Score Type: ')
-table(Master[ Master$PVal_Adj < 0.05, ]$OddsRatio > 1, Master[ Master$PVal_Adj < 0.05, ]$NeuroPath_Type ) 
+table(Master[ Master$PVal_Adj < 0.05, ]$OddsRatio > 1, 
+      Master[ Master$PVal_Adj < 0.05, ]$NeuroPath_Type ) 
 
 # Store results
 #write.csv(Master, file = '~/NeuroPath_Regression/Neuropathology_Scores.csv',  row.names =F)
-
 ```
 
 ```{r GNAME}
 library(biomaRt)
-org = 'hsa'
 id.type = 'ensembl_gene_id'
-host = 'jul2019.archive.ensembl.org'
+host = 'https://jul2019.archive.ensembl.org'
   
 message("Connecting to BioMart ...")
 ensembl <- useMart("ENSEMBL_MART_ENSEMBL", host = host)
-ds <- listDatasets(ensembl)[, "dataset"]
-ds <- grep(paste0("^", org), ds, value = TRUE)
-ensembl <- useDataset(ds, mart = ensembl)
+ensembl <- useDataset("hsapiens_gene_ensembl", mart = ensembl)
 
-Genes <- getBM(filters = id.type, attributes = c(id.type, 'hgnc_symbol', 'chromosome_name', 'start_position', 'end_position'), values = Master$ENSG , mart = ensembl)
+Genes <- getBM(filters = id.type, attributes = c(id.type, 'hgnc_symbol'), 
+               values = unique(Master$ENSG) , mart = ensembl)
 
-Genes[ Genes$hgnc_symbol == '',]$hgnc_symbol <- "NA"
 Genes <- Genes[ !duplicated(Genes$ensembl_gene_id), ]
 row.names(Genes) <- Genes$ensembl_gene_id
 
 Master$GName <- Genes[Master$ENSG,]$hgnc_symbol
 
 Master <- Master[ , c('ENSG', 'GName', 'OddsRatio', 'CI_Lower','CI_Upper', 
-                      'PVal', 'PVal_Adj', 'NeuroPath_Type', 'GName')
+                      'PVal', 'PVal_Adj', 'NeuroPath_Type')
                 ]
-Master <- Master[ , (colnames(Master) %in% 'GName.1')==F]
 
 # Store results
-write.csv(Master, file = '~/NeuroPath_Regression/Neuropathology_Scores.csv',  row.names =F)
+write.csv(Master, file = file.path(dir_wd, "Neuropathology_Scores.csv"), row.names = F)
 ```
 
 ```{r synapse.parameters, include=FALSE, cache=TRUE}
-setwd("~/NeuroPath_Regression/")
-parentId = 'syn7525089';
+parentId = "syn51769643" #'syn7525089';
 activityName = 'ROSMAP DLPFC NeuroPath Regression Results';
 activityDescription = 'Logistic Ordinal Regression of ROSMAP Gene Expression to Neuro Pathology scores (Braak, CERAD, CogDx, and DcfDx) ';
 thisFileName <- 'Neuropath_Scores.Rmd'
 # Github link
-thisRepo <- githubr::getRepo(repository = "jgockley62/NeuroPath_Regression", ref="branch", refName='master')
-thisFile <- githubr::getPermlink(repository = thisRepo, repositoryPath=paste0('code/',thisFileName))
+thisRepo <- githubr::getRepo(repository = "jaclynbeck-sage/NeuroPath_Regression", 
+                             ref="branch", refName='main')
+thisFile <- githubr::getPermlink(repository = thisRepo, 
+                                 repositoryPath = paste0('code/', thisFileName))
 ```
 
 ### Store files in synapse
 ```{r synapse.store, include=FALSE, eval=TRUE, cache=FALSE}
-setwd("~/NeuroPath_Regression/")
 activityName = 'ROSMAP DLPFC NeuroPath Regression Results';
 activityDescription = 'Logistic Ordinal Regression of ROSMAP Gene Expression to Neuro Pathology scores (Braak, CERAD, CogDx, and DcfDx) ';
-CODE <- syn_temp$store(synapseclient$Folder(name = "correlations_gene_neuropath", parentId = parentId))
+
+CODE <- synStore(Folder(name = "correlations_gene_neuropath", parent = parentId))
 
 #Set Used SynIDs For Provenance
 Syns_Used <- c( 'syn21292032', 'syn3191087', 'syn21323366', 'syn3382527' )
@@ -234,7 +254,7 @@ all.annotations = list(
   dataSubType = 'geneExp',
   summaryLevel = 'gene',
   assay	 = 'RNAseq',
-  tissueTypeAbrv	= NULL, 
+  tissueTypeAbrv	= 'DLPFC', 
   study = 'ROSMAP', 
   organism = 'HomoSapiens',
   consortium	= 'ROSMAP',
@@ -244,26 +264,23 @@ all.annotations = list(
   genomeAssemblyID = 'GRCh38'
 )
 
-ENRICH_OBJ <-  syn_temp$store( synapseclient$File( path='~/NeuroPath_Regression/Neuropathology_Scores.csv', name = 'ROSMAP DLPFC NeuroPath Regression Results', parentId=CODE$properties$id ), activityName = activityName, executed = c( Syns_Used, thisFile) , activityDescription = activityDescription)
-  all.annotations$tissueTypeAbrv = 'DLPFC'
-  syn_temp$setAnnotations(ENRICH_OBJ, annotations = all.annotations)
-
+ENRICH_OBJ <- synStore( File( path = file.path(dir_wd, "Neuropathology_Scores.csv"), 
+                              name = 'ROSMAP DLPFC NeuroPath Regression Results', 
+                              parent = CODE$properties$id,
+                              annotations = all.annotations), 
+                        activityName = activityName, 
+                        executed = c(Syns_Used, thisFile), 
+                        activityDescription = activityDescription,
+                        forceVersion = FALSE)
 ```
 
 ### R Source Code
 [Github](`r thisFile`)
 
 ```{r knitmd, eval=FALSE, cache=FALSE, include=FALSE}
-reticulate::use_python("/usr/bin/python", required = TRUE)
-synapseclient <- reticulate::import("synapseclient")
-syn_temp <- synapseclient$Synapse()
-syn_temp$login()
-
-setwd("~/NeuroPath_Regression/")
-
-source("~/NeuroPath_Regression/utilityFunctions/knitfile2synapseClient.R")
-source("~/NeuroPath_Regression/utilityFunctions/hook_synapseMdSyntax_plot.R")
-createAndKnitToFolderEntityClient(file = "code/Neuropath_Scores.Rmd",
-                                          parentId ="syn7525089",
+source(file.path(dir_wd, "utilityFunctions", "knitfile2synapseClient.R"))
+source(file.path(dir_wd, "utilityFunctions", "hook_synapseMdSyntax_plot.R"))
+createAndKnitToFolderEntityClient(file = file.path(dir_wd, "code", "Neuropath_Scores.Rmd"),
+                                          parentId = "syn51769643", #"syn7525089",
                                           folderName = 'correlations_gene_neuropath')
 ```
